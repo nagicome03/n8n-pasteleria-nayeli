@@ -1,0 +1,147 @@
+{
+  "name": "02 Cierre diario",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 21
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "250633ac-9a44-49cf-90b7-b32417559be6",
+      "name": "Cada noche a las 21:00"
+    },
+    {
+      "parameters": {
+        "url": "http://pasteleria:8000/api/pagos",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "desde",
+              "value": "={{ $now.format('yyyy-MM-dd') }}"
+            },
+            {
+              "name": "hasta",
+              "value": "={{ $now.format('yyyy-MM-dd') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        224,
+        0
+      ],
+      "id": "0087a2ff-719b-4225-9b04-96079e989c39",
+      "name": "Pagos de hoy",
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "2u42jO2g8ofRlBGO",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const pagos = $input.all().map(i => i.json).filter(p => p.importe);\nconst porForma = {};\nfor (const p of pagos) porForma[p.forma_pago] = (porForma[p.forma_pago] || 0) + p.importe;\nconst total = pagos.reduce((s, p) => s + p.importe, 0);\nconst lineas = Object.entries(porForma).map(([forma, importe]) => `  ${forma}: ${importe.toFixed(2)} €`);\nreturn [{ json: {\n  fecha: $now.toFormat('dd/MM/yyyy'),\n  total: total.toFixed(2),\n  resumen: pagos.length ? lineas.join('\\n') : '  (hoy no se ha cobrado nada)',\n  n: pagos.length,\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "id": "577239c9-197f-432f-9059-586e94c9bf51",
+      "name": "Sumar por forma de pago"
+    },
+    {
+      "parameters": {
+        "fromEmail": "pasteleria@lacuchara.example",
+        "toEmail": "marisa@lacuchara.example",
+        "subject": "Cierre de caja del {{ $json.fecha }}",
+        "emailFormat": "text",
+        "text": "=Hola Marisa,\n\nHoy se han cobrado {{ $json.total }} € ({{ $json.n }} pagos):\n\n{{ $json.resumen }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        672,
+        0
+      ],
+      "id": "4a1c3a7f-a9b0-46ab-98a0-00b7dc98374b",
+      "name": "Enviar cierre a Marisa",
+      "webhookId": "ab2445f3-dd3b-41bc-8de4-3b1ab12f3e8a",
+      "credentials": {
+        "smtp": {
+          "id": "qaPBdcBflGAvZ1XF",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Cada noche a las 21:00": {
+      "main": [
+        [
+          {
+            "node": "Pagos de hoy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pagos de hoy": {
+      "main": [
+        [
+          {
+            "node": "Sumar por forma de pago",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sumar por forma de pago": {
+      "main": [
+        [
+          {
+            "node": "Enviar cierre a Marisa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "d1b276ed-d76b-47f9-8256-1c982b34baa8",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6978363e898d5c4d21bea62c904b75824d602c0b3534be0cef86870ad551c961"
+  },
+  "nodeGroups": [],
+  "id": "1tgDYshkcKAIj0v2",
+  "tags": []
+}

@@ -1,0 +1,261 @@
+{
+  "name": "01 Eventos de la pastelería",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pasteleria",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "8db1bec5-d5d9-49ca-9d5a-a4bf71506f8c",
+      "name": "Evento de la pastelería",
+      "webhookId": "76a2beb8-deda-4177-b18f-3c312984aa81"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.evento }}",
+                    "rightValue": "encargo.creado",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "bd7c2c0d-8873-43b2-8687-25fc407f5d45"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "encargo.creado"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "id": "b9b91200-3844-4d37-9705-53ed7388ba43",
+                    "leftValue": "={{ $json.body.evento }}",
+                    "rightValue": "pago.registrado",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "pago.registrado"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.5,
+      "position": [
+        224,
+        0
+      ],
+      "id": "2eb5e9de-97a1-4d43-972a-264535f447cd",
+      "name": "Según el evento"
+    },
+    {
+      "parameters": {
+        "fromEmail": "pasteleria@lacuchara.example",
+        "toEmail": "={{ $json.body.datos.email }}",
+        "subject": "=Tu encargo #{{ $json.body.datos.id }} está confirmado",
+        "emailFormat": "text",
+        "text": "=Hola {{ $json.body.datos.cliente }},\n\nHemos apuntado tu encargo: {{ $json.body.datos.tarta }} para {{ $json.body.datos.raciones }} raciones.\n\nPrecio: {{ $json.body.datos.precio.toFixed(2) }} €\nPagado: {{ $json.body.datos.pagado.toFixed(2) }} €\nPendiente: {{ $json.body.datos.pendiente.toFixed(2) }} €\nEntrega: {{ $json.body.datos.fecha_entrega }}\n\nPastelería La Cuchara",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        448,
+        -96
+      ],
+      "id": "444d0b72-1947-48a1-83cd-15f83ce2f409",
+      "name": "Confirmar encargo",
+      "webhookId": "552beddc-0c68-4baa-ae54-85d46a56ba9d",
+      "credentials": {
+        "smtp": {
+          "id": "qaPBdcBflGAvZ1XF",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "78826073-16a4-492e-b9e0-c347e9aee78d",
+              "leftValue": "={{ $json.body.datos.estado }}",
+              "rightValue": "pagado",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        448,
+        96
+      ],
+      "id": "b095b490-4ff5-4d17-82a9-595e56548a98",
+      "name": "¿Queda pagado?"
+    },
+    {
+      "parameters": {
+        "fromEmail": "pasteleria@lacuchara.example",
+        "toEmail": "={{ $json.body.datos.email }}",
+        "subject": "=Tu encargo #{{ $json.body.datos.id }} está pagado",
+        "emailFormat": "text",
+        "text": "=Hola {{ $json.body.datos.cliente }}, hemos recibido {{ $json.body.datos.importe.toFixed(2) }} € y tu encargo ya está pagado por completo. Te esperamos el {{ $json.body.datos.fecha_entrega }} para recoger tu {{ $json.body.datos.tarta }}.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        672,
+        0
+      ],
+      "id": "0063829d-af8e-4a01-b8db-7573f86fc453",
+      "name": "Tarta lista para recoger",
+      "webhookId": "6ed731ee-42ee-48c6-a996-7cfbb7e24df0",
+      "credentials": {
+        "smtp": {
+          "id": "qaPBdcBflGAvZ1XF",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "pasteleria@lacuchara.example",
+        "toEmail": "={{ $json.body.datos.email }}",
+        "subject": "=Recibo de tu pago del encargo #{{ $json.body.datos.id }}",
+        "emailFormat": "text",
+        "text": "=Hola {{ $json.body.datos.cliente }}, hemos recibido {{ $json.body.datos.importe.toFixed(2) }} €. Te quedan por pagar {{ $json.body.datos.pendiente.toFixed(2) }} € antes de la entrega ({{ $json.body.datos.fecha_entrega }}).",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        672,
+        192
+      ],
+      "id": "551ea2da-a789-4a2b-a783-99e84539246b",
+      "name": "Recibo de pago",
+      "webhookId": "72ded400-9f48-4b57-8896-29fdfde133a2",
+      "credentials": {
+        "smtp": {
+          "id": "qaPBdcBflGAvZ1XF",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Evento de la pastelería": {
+      "main": [
+        [
+          {
+            "node": "Según el evento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Según el evento": {
+      "main": [
+        [
+          {
+            "node": "Confirmar encargo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "¿Queda pagado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Queda pagado?": {
+      "main": [
+        [
+          {
+            "node": "Tarta lista para recoger",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Recibo de pago",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "c7c25ef1-fa9f-41d8-893f-20bf567bf127",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6978363e898d5c4d21bea62c904b75824d602c0b3534be0cef86870ad551c961"
+  },
+  "nodeGroups": [],
+  "id": "7IhVWQbO8IETpbTB",
+  "tags": []
+}
