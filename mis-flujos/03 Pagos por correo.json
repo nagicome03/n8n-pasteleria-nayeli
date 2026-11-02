@@ -1,0 +1,354 @@
+{
+  "name": "03 Pagos por correo",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Correo del banco",
+        "formDescription": "Pega aquí el correo que ha llegado",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Correo",
+              "fieldType": "textarea"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        0
+      ],
+      "id": "8732adbb-4b00-4535-89ad-99941311c4c1",
+      "name": "Pegar correo",
+      "webhookId": "caf555e5-ebd2-4ebe-92f8-d4c9799d4785"
+    },
+    {
+      "parameters": {
+        "text": "={{ $json.Correo }}",
+        "schemaType": "fromJson",
+        "jsonSchemaExample": "{ \"es_pago\": true, \"ordenante\": \"CARMEN RUIZ\", \"importe\": 12.5, \"forma\": \"bizum\", \"concepto\": \"tarta queso\" }",
+        "options": {
+          "systemPromptTemplate": "Eres un asistente que lee correos de un banco para una pastelería. Decide si el correo avisa de un pago recibido (Bizum o transferencia): es_pago=true; si es publicidad u otra cosa, es_pago=false. Extrae el nombre de quien paga (ordenante), el importe como número con punto decimal, la forma (bizum o transferencia) y el concepto. Si un dato no aparece, déjalo vacío. No inventes nada."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1.2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "11fbe727-9372-4ba7-a528-b4fcfa55195e",
+      "name": "Extraer datos del correo"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-120b",
+        "options": {
+          "temperature": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        160,
+        208
+      ],
+      "id": "5a03a265-ca1a-496a-abe8-1be6d46226ce",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "dmM4Ptx2Jo3omiEO",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "1d44c516-6e41-4dcb-89a2-c2bcd6bcbeee",
+              "leftValue": "={{ $json.output.es_pago }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        592,
+        0
+      ],
+      "id": "bcb23c4f-7ce6-491a-9ed8-f6ad6f92c74b",
+      "name": "¿Es un pago?"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        816,
+        96
+      ],
+      "id": "fb33cde1-9f34-4d6e-9ae4-6355028d9ffe",
+      "name": "Ignorar correo"
+    },
+    {
+      "parameters": {
+        "url": "http://pasteleria:8000/api/encargos",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "estado",
+              "value": "pendiente"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        816,
+        -96
+      ],
+      "id": "db1b2497-661c-4974-b5f5-317091880118",
+      "name": "Encargos pendientes",
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "2u42jO2g8ofRlBGO",
+          "name": "API pasteleria"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const datos = $('Extraer datos del correo').first().json.output;\nconst pendientes = $input.all().map(i => i.json).filter(e => e.id);\nconst norm = s => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]/g, ' ').trim();\n\nlet candidatos = [];\nconst porNumero = norm(datos.concepto).match(/(?:encargo|pedido)\\s*(\\d+)/);\nif (porNumero) {\n  candidatos = pendientes.filter(e => e.id === Number(porNumero[1]));\n} else {\n  // Nombre: el primer nombre coincide y el siguiente apellido empieza igual (sirve \"JORGE M.\")\n  const t = norm(datos.ordenante).split(/\\s+/).filter(Boolean);\n  candidatos = pendientes.filter(e => {\n    const c = norm(e.cliente).split(/\\s+/);\n    return t.length >= 2 && c[0] === t[0] && c.slice(1).some(w => w.startsWith(t[1]) || t[1].startsWith(w));\n  });\n}\n\nconst base = { ordenante: datos.ordenante, importe: datos.importe, forma: datos.forma, concepto: datos.concepto };\nif (candidatos.length !== 1)\n  return [{ json: { ...base, decision: 'revisar', motivo: candidatos.length ? 'Hay varios encargos posibles' : 'No he encontrado ningún encargo pendiente de esa persona' } }];\nconst e = candidatos[0];\nif (datos.importe > e.pendiente)\n  return [{ json: { ...base, decision: 'revisar', encargo_id: e.id, motivo: `Paga ${datos.importe} € pero al encargo #${e.id} solo le faltan ${e.pendiente} €` } }];\nreturn [{ json: { ...base, decision: 'registrar', encargo_id: e.id, motivo: 'Coincide con un único encargo' } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        -96
+      ],
+      "id": "be146941-33dc-4616-8916-5b159eb56da8",
+      "name": "Buscar el encargo"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "fc00dc8d-fc3e-4798-ac9c-9295a67628df",
+              "leftValue": "={{ $json.decision }}",
+              "rightValue": "registrar",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1264,
+        -96
+      ],
+      "id": "f002bc97-b06a-48eb-829a-5828d2a4defb",
+      "name": "¿Se puede registrar?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://pasteleria:8000/api/encargos/{{ $json.encargo_id }}/pagos",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"importe\": {{ $json.importe }}, \"forma_pago\": \"{{ $json.forma }}\" }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1488,
+        -192
+      ],
+      "id": "8c0daa7a-09fe-400b-b205-92a31c5c9bed",
+      "name": "Registrar el pago",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "2u42jO2g8ofRlBGO",
+          "name": "API pasteleria"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "pasteleria@lacuchara.example",
+        "toEmail": "marisa@lacuchara.example",
+        "subject": "=Pago para revisar: {{ $json.importe }} € de {{ $json.ordenante }}",
+        "emailFormat": "text",
+        "text": "=Hola Marisa,\n\nHa llegado un pago y no lo he registrado.\n\nMotivo: {{ $json.motivo }}\n\nOrdenante: {{ $json.ordenante }}\nImporte: {{ $json.importe }} €\nForma: {{ $json.forma }}\nConcepto: {{ $json.concepto }}\n\nRegístralo tú si es correcto.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1488,
+        0
+      ],
+      "id": "93a7d06d-2e4c-48e0-97fb-812305ba2b70",
+      "name": "Preguntar a Marisa",
+      "webhookId": "e0829cab-c700-4e52-bada-fa3d930ed172",
+      "credentials": {
+        "smtp": {
+          "id": "qaPBdcBflGAvZ1XF",
+          "name": "Mailpit"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Pegar correo": {
+      "main": [
+        [
+          {
+            "node": "Extraer datos del correo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Extraer datos del correo",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer datos del correo": {
+      "main": [
+        [
+          {
+            "node": "¿Es un pago?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Es un pago?": {
+      "main": [
+        [
+          {
+            "node": "Encargos pendientes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ignorar correo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Encargos pendientes": {
+      "main": [
+        [
+          {
+            "node": "Buscar el encargo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar el encargo": {
+      "main": [
+        [
+          {
+            "node": "¿Se puede registrar?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Se puede registrar?": {
+      "main": [
+        [
+          {
+            "node": "Registrar el pago",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preguntar a Marisa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "2qcHI76dYNoElqu6",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "a62e3adb-c733-41af-b953-656b9514b10a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6978363e898d5c4d21bea62c904b75824d602c0b3534be0cef86870ad551c961"
+  },
+  "nodeGroups": [],
+  "id": "3ac2nvxsvJevWYxD",
+  "tags": []
+}
